@@ -17,7 +17,7 @@ const int MAX_FIELD_SIZE = 5000;
 const int MAX_DATA_SIZE = 1024;
 const int DEFAULT_FIELD_SIZE = 666;
 const int DEFAULT_STEPS_AMOUNT = 30;
-const int BUFFER_SIZE = 4096;
+const int BUFFER_SIZE = 2048;
 const int TIMEOUT_WAIT_NODES_MILLISECONDS = 10000;
 
 /* secret_phrase, row, column, len, step */

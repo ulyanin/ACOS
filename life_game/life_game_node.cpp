@@ -80,7 +80,7 @@ void die(const char *s)
     exit(1);
 }
 
-void get_data(Node &server, int &rows_amount, int step)
+void get_data(Node &server, int &rows_amount, int &step)
 {
     char * data = nullptr;
     int pieces_amount = -1;
@@ -90,9 +90,11 @@ void get_data(Node &server, int &rows_amount, int step)
         int size = server.get_data(data, 0);
         if (size >= phrase_len + (int)sizeof(int) &&
             strncmp(data, PHRASE_SERVER_DONE_STEP, phrase_len) == 0) {
-            char * tmp  = deserialize_int(&pieces_amount, data + phrase_len);
+            char * tmp  = deserialize_int(&step, data + phrase_len);
+            tmp         = deserialize_int(&pieces_amount, tmp);
             tmp         = deserialize_int(&field_size, tmp);
             deserialize_int(&rows_amount, tmp);
+            continue;
         }
         int server_step, row, column, row_length;
         char * buf = deserialize_int(&server_step, data);
@@ -100,8 +102,9 @@ void get_data(Node &server, int &rows_amount, int step)
         buf = deserialize_int(&column, buf);
         buf = deserialize_int(&row_length, buf);
         if (server_step != step) {
-            printf("ERR: received msg with step which is different from our; skipped\n");
-            continue;
+            printf("ERR: received msg with step which is different from our; (serv=%d) != %d\n", server_step, step);
+            step = server_step;
+//            continue;
         }
         if (4 * (int)sizeof(int) + row_length > size) {
             fprintf(stderr, "received msg: truncated length\n");
@@ -109,8 +112,8 @@ void get_data(Node &server, int &rows_amount, int step)
             memcpy(&map[step & 1][row][column], buf, row_length);
             ++pieces_received;
         }
-        printf("received %d pieces\n", pieces_received);
     }
+    printf("received %d/%d pieces;\n", pieces_received, pieces_amount);
     free(data);
 }
 
@@ -156,14 +159,16 @@ void send_data(Node &server, int step, int rows_amount)
             ++pieces_amount;
             column += rest;
         }
+#ifdef DEBUG_LOG
         printf("sent row%d\n", i);
+#endif
     }
     server.push_data_str(PHRASE_NODE_DONE_STEP, -1);
     server.push_data_int(pieces_amount);
     server.push_data_int(step);
     server.push_data_int(rows_amount - 2);
     server.send_pushed_data();
-    printf("summary pieces amount=%d\n", pieces_amount);
+    printf("summary pieces sent amount=%d\n", pieces_amount);
 }
 
 void client(char * server_name, int server_port)
@@ -177,6 +182,7 @@ void client(char * server_name, int server_port)
         die("inet_aton() failed\n");
     }
     Node server(server_address);
+    server.set_up_socket();
     server.register_as_client_node();
     if (server.receive_and_accept_server_ans() < 0)
         return;
@@ -194,8 +200,9 @@ void client(char * server_name, int server_port)
 int main(int argc, char **argv)
 {
     if (argc != 3) {
-        printf("Wrong params; using: ./life_game_client server_address server_port\n");
+        printf("Wrong params amount(=%d); using: ./life_game_client server_address server_port\n", argc);
     } else {
+        printf("%s %s\n", argv[1], argv[2]);
         client(argv[1], std::stoi(argv[2]));
     }
     return 0;

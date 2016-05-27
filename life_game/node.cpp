@@ -7,6 +7,7 @@
 #include <ctime>
 #include <iostream>
 #include <malloc.h>
+#include <poll.h>
 
 inline char gen_rnd_char()
 {
@@ -27,7 +28,6 @@ Node::Node(const sockaddr_in &address_to_connect)
 //    for (int i = 0; i < SECRET_PASSPHRASE_LENGTH; ++i)
 //        secret_pass_phrase_[i] = gen_rnd_char();
 //    secret_pass_phrase_[SECRET_PASSPHRASE_LENGTH] = 0;
-    set_up_socket();
     memset(data_to_send_, 0, sizeof(data_to_send_));
     data_to_send_size_ = 0;
 }
@@ -50,7 +50,8 @@ int Node::set_up_socket()
 
 int Node::set_up_connection()
 {
-    int rc = connect(socket_fd_, (struct sockaddr *)&node_address_, sizeof(node_address_));
+    int rc = 0;
+    connect(socket_fd_, (struct sockaddr *)&node_address_, sizeof(node_address_));
     if (rc < 0) {
         perror("cannot set up connection");
         return -1;
@@ -63,6 +64,13 @@ int Node::set_up_connection()
 int Node::send_buffer(const char *buf, int buf_len)
 {
     ssize_t len = (buf_len == -1 ? strlen(buf) : buf_len);
+//    pollfd wait_output;
+//    wait_output.events = POLLOUT | POLL;
+//    wait_output.fd = socket_fd_;
+//    poll(&wait_output, 1, -1);
+//    if (!(wait_output.revents & POLLOUT))
+//        fprintf(stderr, "cannot send\n");
+    usleep(100);
     ssize_t amount = sendto(socket_fd_, buf, len, 0, (sockaddr *)&node_address_, sizeof(node_address_));
     if (amount == -1) {
         perror("send_buffer: send()");
