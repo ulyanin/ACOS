@@ -137,11 +137,29 @@ void read_data_from_node(int &pieces_amount, int &received, int step, int node_n
     free(data);
 }
 
+void listen_nodes(int fd, pollfd &pollfd_server)
+{
+    struct sockaddr_in remote;
+    socklen_t remote_address_len = sizeof(remote);
+    char buffer[BUFFER_SIZE];
+    while (poll(&pollfd_server, 1, 0) > 0) {
+        if (pollfd_server.revents & POLLIN) {
+            memset(buffer, 0, sizeof(buffer));
+            ssize_t received_len = recvfrom(fd, buffer, BUFFER_SIZE, 0, (struct sockaddr *) &remote,
+                                            &remote_address_len);
+            if (received_len > 0) {
+                printf("received : msg=%s %s %d\n", buffer, inet_ntoa(remote.sin_addr), (int) ntohs(remote.sin_port));
+                nodes.push_back(Node(remote));
+            }
+        }
+    }
+}
+
 int server(int * argv) {
     int port = argv[0];
     int field_size = argv[1];
     int steps_amount = argv[2];
-    char buffer[BUFFER_SIZE];
+//    char buffer[BUFFER_SIZE];
     struct sockaddr_in my_address;      /* our address */
     int fd;                             /* our socket */
 
@@ -160,26 +178,22 @@ int server(int * argv) {
         perror("bind failed");
         return -1;
     }
+    printf("listening port %d\n", port);
     pollfd pollfd_server;
     pollfd_server.events = POLLIN;
     pollfd_server.fd = fd;
     printf("Waiting clients\n");
     poll(&pollfd_server, 1, -1);  /* waiting for first connect */
     for (int step = 0; step < steps_amount; ++step) {
-        poll(&pollfd_server, 1, 0);
-        while (pollfd_server.revents & POLLIN) {
-            struct sockaddr_in remote;
-            socklen_t remote_address_len;
-            recvfrom(fd, buffer, BUFFER_SIZE, 0, (sockaddr *)&remote, &remote_address_len);
-            nodes.push_back(Node(remote));
-            poll(&pollfd_server, 1, 0);
-        }
+        listen_nodes(fd, pollfd_server);
+//        sleep(2);
         int rest = field_size % (int) nodes.size();
         int row_to_each_node = field_size / (int) nodes.size();
         tasks_for_nodes.resize(nodes.size());
         for (int i = 0, last = 0; i < (int) nodes.size(); ++i) {
             int rows = row_to_each_node + (rest < i);
             tasks_for_nodes[i] = std::make_pair(last, last + rows);
+            printf("send_data_to node#%d [%d; %d)\n", i, last, last + rows);
             send_rows_to_node(step, last - 1, last + rows + 1, nodes[i], field_size);
         }
         std::vector<bool> mask_completed_nodes(nodes.size());
