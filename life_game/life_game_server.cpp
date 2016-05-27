@@ -20,36 +20,21 @@
 #include <bitset>
 #include <malloc.h>
 #include <poll.h>
+#include <iostream>
 #include "node.h"
 
-#define SIZE 48
-#define NUM_OF_THREADS 8
-
-int num = 0;
-pthread_t thread_init;
-//int global_step = 0;
-char map[2][SIZE][SIZE];
-int was_printed = 0;
-int was_initialized = 0;
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER,
-                mutex_init = PTHREAD_MUTEX_INITIALIZER,
-                mutex_nodes_vector = PTHREAD_MUTEX_INITIALIZER;
-int temp[NUM_OF_THREADS];
-pthread_barrier_t barrier_distribute_tasks,
-                  barrier_life_game_begin_step,
-                  barrier_life_game_end_step;
+char map[2][MAX_FIELD_SIZE][MAX_FIELD_SIZE];
 std::vector<Node> nodes;
 std::vector <std::pair <int, int> > tasks_for_nodes;
 
-
-void print_map(int step)
+void print_map(int step, int field_size, int row=0, int col=0)
 {
     system("clear");
     printf("GENERETION #%d\n", step);
     int i, j;
-    for (i = 0; i < SIZE; i++){
-        for (j = 0; j < SIZE; j++)
-            printf("%s ", map[(step & 1) ^ 1][i][j] ? "■" : ".");
+    for (i = 0; i < field_size; i++){
+        for (j = 0; j < field_size; j++)
+            printf("%s ", map[(step & 1) ^ 1][i + row][j + col] ? "■" : ".");
         printf("\n");
     }
 }
@@ -69,7 +54,7 @@ void send_rows_to_node(int step, int r_first, int r_last, Node &node, int field_
     int pieces_amount = 0;
     for (int i = r_first; i < r_last; ++i) {
         char * row = get_row_data(step, i, field_size);
-        if (node.is_data_to_send_empty()) {
+        if (!node.is_data_to_send_empty()) {
             fprintf(stderr, "WARN! data_to_send was not empty\n");
             node.reset_data();
         }
@@ -87,11 +72,12 @@ void send_rows_to_node(int step, int r_first, int r_last, Node &node, int field_
             column += rest;
         }
     }
-    node.push_data_str(PHRASE_NODE_DONE_STEP, -1);
+    node.push_data_str(PHRASE_SERVER_DONE_STEP, -1);
     node.push_data_int(pieces_amount);    // pieces of data transmitted
     node.push_data_int(field_size);       // width of field
     node.push_data_int(r_last - r_first); // rows amount
     node.send_pushed_data();
+    printf("summary pieces amount=%d\n", pieces_amount);
 }
 
 bool all_completed(const std::vector<bool> &mask)
@@ -112,12 +98,16 @@ void read_data_from_node(int &pieces_amount, int &received, int step, int node_n
     int phrase_len = strlen(PHRASE_NODE_DONE_STEP);
     if (size >= phrase_len + (int)sizeof(int) &&
         strncmp(data, PHRASE_NODE_DONE_STEP, phrase_len) == 0) {
-        char * tmp = deserialize_int(&pieces_amount, data + phrase_len);
-        int rows_amount;
+        int rows_amount, dst_step;
+        char * tmp  = deserialize_int(&pieces_amount, data + phrase_len);
+        tmp         = deserialize_int(&dst_step, tmp);
         deserialize_int(&rows_amount, tmp);
+        printf("received end of node data; step=%d, rows=%d, pieces_amount=%d\n",
+                dst_step, rows_amount, pieces_amount);
         if (rows_amount != tasks_for_nodes[node_num].second - tasks_for_nodes[node_num].first) {
-            fprintf(stderr, "WARN! received rows amount not same as server");
+            fprintf(stderr, "WARN! received rows amount not the same as server\n");
         }
+        free(data);
         return;
     }
     int dst_step, row, column, row_length;
@@ -125,8 +115,9 @@ void read_data_from_node(int &pieces_amount, int &received, int step, int node_n
     buf = deserialize_int(&row, buf);
     buf = deserialize_int(&column, buf);
     buf = deserialize_int(&row_length, buf);
+    printf("received row#%d col=%d dst_step=%d rlength=%d\n", row, column, dst_step, row_length);
     if (dst_step != step) {
-        fprintf(stderr, "WARN! dst_step not the same as server step; skipped");
+        fprintf(stderr, "WARN! dst_step not the same as server step; skipped\n");
     }
     else if (4 * (int)(sizeof(int)) + row_length > size) {
         fprintf(stderr, "received msg: truncated length\n");
@@ -207,6 +198,7 @@ int server(int * argv) {
         std::vector<int> expected_pieces_amount(nodes.size(), -1);
         std::vector<int> received_pieces_amount(nodes.size(), 0);
         while (!all_completed(mask_completed_nodes)) {
+            std::cout << nodes.size() << std::endl;
             int status = poll(socket_descriptors.data(), socket_descriptors.size(), TIMEOUT_WAIT_NODES_MILLISECONDS);
             if (status < 0) {
                 perror("poll nodes");
@@ -222,6 +214,7 @@ int server(int * argv) {
                     read_data_from_node(expected_pieces_amount[i], received_pieces_amount[i], step, i);
                     if (received_pieces_amount[i] == expected_pieces_amount[i]) {
                         mask_completed_nodes[i] = 1;
+                        printf("Node %d completed\n", i);
                     }
                 }
             }
@@ -232,7 +225,8 @@ int server(int * argv) {
 
 
 
-int main(int argc, char ** argv) {
+int main(int argc, char ** argv)
+{
 
     int port = DEFAULT_PORT,
         field_size = DEFAULT_FIELD_SIZE,
@@ -246,6 +240,10 @@ int main(int argc, char ** argv) {
         port = std::stoi(argv[1]);
         field_size = std::stoi(argv[2]);
         steps_amount = std::stoi(argv[3]);
+
+    }
+    if (field_size > MAX_FIELD_SIZE) {
+        fprintf(stderr, "too large field size\n");
     }
     int argv_parsed[] = {port, field_size, steps_amount};
 

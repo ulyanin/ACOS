@@ -85,14 +85,14 @@ void get_data(Node &server, int &rows_amount, int step)
     char * data = nullptr;
     int pieces_amount = -1;
     int pieces_received = 0;
-    int phrase_len = strlen(PHRASE_NODE_DONE_STEP);
+    int phrase_len = strlen(PHRASE_SERVER_DONE_STEP);
     while (pieces_amount != pieces_received) {
         int size = server.get_data(data, 0);
         if (size >= phrase_len + (int)sizeof(int) &&
-            strncmp(data, PHRASE_NODE_DONE_STEP, phrase_len) == 0) {
-            char * tmp = deserialize_int(&pieces_amount, data + phrase_len);
-            deserialize_int(&field_size, tmp);
-            return;
+            strncmp(data, PHRASE_SERVER_DONE_STEP, phrase_len) == 0) {
+            char * tmp  = deserialize_int(&pieces_amount, data + phrase_len);
+            tmp         = deserialize_int(&field_size, tmp);
+            deserialize_int(&rows_amount, tmp);
         }
         int server_step, row, column, row_length;
         char * buf = deserialize_int(&server_step, data);
@@ -106,9 +106,10 @@ void get_data(Node &server, int &rows_amount, int step)
         if (4 * (int)sizeof(int) + row_length > size) {
             fprintf(stderr, "received msg: truncated length\n");
         } else {
-            memcpy(&map[step][row][column], buf, row_length);
+            memcpy(&map[step & 1][row][column], buf, row_length);
             ++pieces_received;
         }
+        printf("received %d pieces\n", pieces_received);
     }
     free(data);
 }
@@ -138,7 +139,7 @@ void send_data(Node &server, int step, int rows_amount)
     int pieces_amount = 0;
     for (int i = 1; i < rows_amount - 1; ++i) {
         char * row = get_row_data(step, i, field_size);
-        if (server.is_data_to_send_empty()) {
+        if (!server.is_data_to_send_empty()) {
             fprintf(stderr, "WARN! data_to_send was not empty\n");
             server.reset_data();
         }
@@ -147,7 +148,7 @@ void send_data(Node &server, int step, int rows_amount)
             if (column + rest > field_size)
                 rest = field_size - column;
             server.push_data_int(step);  // step
-            server.push_data_int(i);  // row 0..rows_amount
+            server.push_data_int(i - 1);  // row [0..rows_amount)
             server.push_data_int(column);
             server.push_data_int(rest);  // row length
             server.push_data_str(row + column, rest);
@@ -155,11 +156,14 @@ void send_data(Node &server, int step, int rows_amount)
             ++pieces_amount;
             column += rest;
         }
+        printf("sent row%d\n", i);
     }
     server.push_data_str(PHRASE_NODE_DONE_STEP, -1);
     server.push_data_int(pieces_amount);
-    server.push_data_int(rows_amount);
+    server.push_data_int(step);
+    server.push_data_int(rows_amount - 2);
     server.send_pushed_data();
+    printf("summary pieces amount=%d\n", pieces_amount);
 }
 
 void client(char * server_name, int server_port)
@@ -178,8 +182,11 @@ void client(char * server_name, int server_port)
         return;
     for (int step = 0; ; step++) {
         int rows_amount;
+        printf("getting data\n");
         get_data(server, rows_amount, step);
+        printf("calculating step data; fsize=%d, rows=%d\n", field_size, rows_amount);
         calculate_step(step, rows_amount);
+        printf("sending data\n");
         send_data(server, step, rows_amount);
     }
 }

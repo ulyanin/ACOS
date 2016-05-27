@@ -42,7 +42,7 @@ socklen_t Node::address_len_()
 
 int Node::set_up_socket()
 {
-    if ((socket_fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    if ((socket_fd_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
         perror("cannot set up socket");
     }
     return socket_fd_;
@@ -108,6 +108,7 @@ ssize_t Node::send_pushed_data()
     if (data_to_send_size_ == 0)
         return 0;
     ssize_t sent = send_buffer(data_to_send_, data_to_send_size_);
+    reset_data();
     return sent;
 }
 
@@ -139,6 +140,8 @@ int Node::receive_and_accept_server_ans()
     memset(buf_, 0, sizeof(buf_));
     ssize_t receive_len = recvfrom(socket_fd_, buf_, MAX_DATA_SIZE, 0,
                                    (sockaddr *)&new_sock_address, &new_sock_address_len);
+    printf("received : msg=%s %s %d\n", buf_,
+           inet_ntoa(new_sock_address.sin_addr), (int) ntohs(new_sock_address.sin_port));
     if (receive_len < (int)strlen(PHRASE_SERVER_ACCEPT_NODE)) {
         fprintf(stderr, "strange data received: %s; spam?\n", buf_);
         return -1;
