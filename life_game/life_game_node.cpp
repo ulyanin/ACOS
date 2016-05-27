@@ -173,7 +173,8 @@ void client(char * server_name, int server_port)
         die("inet_aton() failed\n");
     }
     Node server(server_address);
-    server.send_buffer(PHRASE_BE_NODE, -1);
+    server.register_as_client_node();
+    server.receive_and_accept_server_ans();
     for (int step = 0; ; step++) {
         int rows_amount;
         get_data(server, rows_amount, step);

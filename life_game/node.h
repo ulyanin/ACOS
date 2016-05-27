@@ -18,9 +18,8 @@
 class Node
 {
 private:
-    int set_up_connection_();
-    struct sockaddr_in node_address_;
 
+    struct sockaddr_in node_address_;
 //    struct sockaddr_in server_address_;
     static socklen_t address_len_();
     int socket_fd_;
@@ -31,7 +30,7 @@ private:
 public:
     Node(const sockaddr_in &address_to_connect);
     ~Node();
-    void send_buffer(const char *buf, int buf_len = -1);
+    int send_buffer(const char *buf, int buf_len = -1);
     int get_data(char * &data, int timeout=TIMEOUT_WAIT_NODES_MILLISECONDS);
     int push_data_str(const char * data, int size);  // return rest size or -1 if overflow
     int push_data_int(int num);                      // return rest size or -1 if overflow
@@ -40,6 +39,10 @@ public:
     void reset_data();
     bool is_data_to_send_empty() const;
     int get_socket_fd() const;
+    int receive_and_accept_server_ans();
+    int register_as_client_node();
+    int set_up_socket();
+    int set_up_connection();
 };
 
 

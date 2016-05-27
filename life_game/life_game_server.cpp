@@ -150,6 +150,8 @@ void listen_nodes(int fd, pollfd &pollfd_server)
             if (received_len > 0) {
                 printf("received : msg=%s %s %d\n", buffer, inet_ntoa(remote.sin_addr), (int) ntohs(remote.sin_port));
                 nodes.push_back(Node(remote));
+                nodes.back().set_up_connection();
+                nodes.back().send_buffer(PHRASE_SERVER_ACCEPT_NODE);
             }
         }
     }

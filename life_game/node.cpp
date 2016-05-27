@@ -27,45 +27,50 @@ Node::Node(const sockaddr_in &address_to_connect)
 //    for (int i = 0; i < SECRET_PASSPHRASE_LENGTH; ++i)
 //        secret_pass_phrase_[i] = gen_rnd_char();
 //    secret_pass_phrase_[SECRET_PASSPHRASE_LENGTH] = 0;
-    set_up_connection_();
+    set_up_socket();
     memset(data_to_send_, 0, sizeof(data_to_send_));
     data_to_send_size_ = 0;
 }
 
 Node::~Node()
-{
-    close(socket_fd_);
-}
+{ }
 
 socklen_t Node::address_len_()
 {
     return sizeof(node_address_);
 }
 
-int Node::set_up_connection_()
+int Node::set_up_socket()
 {
     if ((socket_fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("cannot set up socket");
-        return socket_fd_;
     }
+    return socket_fd_;
+}
+
+int Node::set_up_connection()
+{
     int rc = connect(socket_fd_, (struct sockaddr *)&node_address_, sizeof(node_address_));
     if (rc < 0) {
         perror("cannot set up connection");
         return -1;
+    } else {
+        printf("connection is set up ok\n");
     }
     return rc;
 }
 
-void Node::send_buffer(const char *buf, int buf_len)
+int Node::send_buffer(const char *buf, int buf_len)
 {
     ssize_t len = (buf_len == -1 ? strlen(buf) : buf_len);
-    ssize_t amount = send(socket_fd_, buf, len, 0);
+    ssize_t amount = sendto(socket_fd_, buf, len, 0, (sockaddr *)&node_address_, sizeof(node_address_));
     if (amount == -1) {
         perror("send_buffer: send()");
     }
     if (amount != len) {
         fprintf(stderr, "WARNING!! MESSAGE MAY BE TRUNC %d %d\n", (int)amount, (int)len);
     }
+    return amount;
 }
 
 int Node::get_data(char * &data, int timeout)
@@ -102,11 +107,7 @@ ssize_t Node::send_pushed_data()
 {
     if (data_to_send_size_ == 0)
         return 0;
-    ssize_t sent = send(socket_fd_, data_to_send_, data_to_send_size_, 0);
-    if (sent < 0) {
-        perror("error while sending data");
-    }
-    reset_data();
+    ssize_t sent = send_buffer(data_to_send_, data_to_send_size_);
     return sent;
 }
 
@@ -129,4 +130,25 @@ bool Node::is_data_to_send_empty() const
 int Node::get_socket_fd() const
 {
     return socket_fd_;
+}
+
+int Node::receive_and_accept_server_ans()
+{
+    sockaddr_in new_sock_address;
+    socklen_t new_sock_address_len = sizeof(new_sock_address);
+    memset(buf_, 0, sizeof(buf_));
+    ssize_t receive_len = recvfrom(socket_fd_, buf_, MAX_DATA_SIZE, 0,
+                                   (sockaddr *)&new_sock_address, &new_sock_address_len);
+    if (receive_len < strlen(PHRASE_SERVER_ACCEPT_NODE)) {
+        fprintf(stderr, "strange data received; spam?\n");
+    } else if (strncmp(buf_, PHRASE_SERVER_ACCEPT_NODE, strlen(PHRASE_SERVER_ACCEPT_NODE)) == 0) {
+        printf("Accept server answer");
+        memcpy(&node_address_, &new_sock_address, new_sock_address_len);
+        set_up_connection();
+    }
+}
+
+int Node::register_as_client_node()
+{
+    return send_buffer(PHRASE_BE_NODE, -1);
 }
