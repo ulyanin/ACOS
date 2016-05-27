@@ -43,4 +43,7 @@ public:
 };
 
 
+char * deserialize_int(int * number, char * data);
+
+
 #endif //LIFE_GAME_NODE_H

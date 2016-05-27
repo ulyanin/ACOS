@@ -15,6 +15,12 @@ inline char gen_rnd_char()
     return rand_char(generator);
 }
 
+char * deserialize_int(int * number, char * data)
+{
+    memcpy(number, data, sizeof(int));
+    return data + sizeof(int);
+}
+
 Node::Node(const sockaddr_in &address_to_connect)
 {
     memcpy(&node_address_, &address_to_connect, sizeof(address_to_connect));
@@ -28,7 +34,7 @@ Node::Node(const sockaddr_in &address_to_connect)
 
 Node::~Node()
 {
-
+    close(socket_fd_);
 }
 
 socklen_t Node::address_len_()
@@ -38,26 +44,27 @@ socklen_t Node::address_len_()
 
 int Node::set_up_connection_()
 {
-    ssize_t recvlen;
     if ((socket_fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("cannot set up socket");
         return socket_fd_;
     }
-    if (connect(socket_fd_, (struct sockaddr *)&node_address_, sizeof(node_address_)) < 0) {
+    int rc = connect(socket_fd_, (struct sockaddr *)&node_address_, sizeof(node_address_));
+    if (rc < 0) {
         perror("cannot set up connection");
         return -1;
     }
+    return rc;
 }
 
 void Node::send_buffer(const char *buf, int buf_len)
 {
-    size_t len = (buf_len == -1 ? strlen(buf) : buf_len);
+    ssize_t len = (buf_len == -1 ? strlen(buf) : buf_len);
     ssize_t amount = send(socket_fd_, buf, len, 0);
     if (amount == -1) {
         perror("send_buffer: send()");
     }
-    if (amount != buf_len) {
-        fprintf(stderr, "WARNING!! MESSAGE MAY BE TRUNC\n");
+    if (amount != len) {
+        fprintf(stderr, "WARNING!! MESSAGE MAY BE TRUNC %d %d\n", (int)amount, (int)len);
     }
 }
 
@@ -65,7 +72,7 @@ int Node::get_data(char * &data, int timeout)
 {
     memset(buf_, 0, sizeof(buf_));
     size_t amount = (size_t)recv(socket_fd_, buf_, BUFFER_SIZE, 0);
-    if (BUFFER_SIZE > MAX_DATA_SIZE) {
+    if (amount > MAX_DATA_SIZE) {
         fprintf(stderr, "WARN. Too much data size; may be spam?\n");
     }
     data = (char *)realloc(data, amount + 1);

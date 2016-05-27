@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -14,7 +13,7 @@
 #include "node.h"
 
 
-int map[2][MAX_FIELD_SIZE][MAX_FIELD_SIZE];
+char map[2][MAX_FIELD_SIZE][MAX_FIELD_SIZE];
 
 int field_size;
 
@@ -81,16 +80,18 @@ void die(const char *s)
     exit(1);
 }
 
-void get_data(Node &server, int step)
+void get_data(Node &server, int &rows_amount, int step)
 {
     char * data = nullptr;
     int pieces_amount = -1;
-    int pieces_received = -1;
+    int pieces_received = 0;
+    int phrase_len = strlen(PHRASE_NODE_DONE_STEP);
     while (pieces_amount != pieces_received) {
         int size = server.get_data(data, 0);
-        if (size >= strlen(PHRASE_NODE_DONE_STEP) + sizeof(int) &&
-            strncmp(data, PHRASE_NODE_DONE_STEP, strlen(PHRASE_NODE_DONE_STEP)) == 0) {
-            pieces_amount = *(int *)(data + strlen(PHRASE_NODE_DONE_STEP));
+        if (size >= phrase_len + (int)sizeof(int) &&
+            strncmp(data, PHRASE_NODE_DONE_STEP, phrase_len) == 0) {
+            char * tmp = deserialize_int(&pieces_amount, data + phrase_len);
+            deserialize_int(&field_size, tmp);
             return;
         }
         int server_step, row, column, row_length;
@@ -98,7 +99,11 @@ void get_data(Node &server, int step)
         buf = deserialize_int(&row, buf);
         buf = deserialize_int(&column, buf);
         buf = deserialize_int(&row_length, buf);
-        if (4 * sizeof(int) + row_length > size) {
+        if (server_step != step) {
+            printf("ERR: received msg with step which is different from our; skipped\n");
+            continue;
+        }
+        if (4 * (int)sizeof(int) + row_length > size) {
             fprintf(stderr, "received msg: truncated length\n");
         } else {
             memcpy(&map[step][row][column], buf, row_length);
@@ -108,16 +113,59 @@ void get_data(Node &server, int step)
     free(data);
 }
 
-void client(int server_port, char * server_name)
+void calculate_step(int step, int rows_amount)
+{
+    for (int i = 1; i < rows_amount - 1; i++) {
+        for (int j = 0; j < field_size; j++)
+        {
+            recalc(step & 1, i, j);
+        }
+    }
+}
+
+
+char * get_row_data(int step, int r, int field_size)
+{
+    if (r < 0)
+        r += field_size;
+    if (r >= field_size)
+        r -= field_size;
+    return map[step & 1][r];
+}
+
+void send_data(Node &server, int step, int rows_amount)
+{
+    int pieces_amount = 0;
+    for (int i = 1; i < rows_amount - 1; ++i) {
+        char * row = get_row_data(step, i, field_size);
+        if (server.is_data_to_send_empty()) {
+            fprintf(stderr, "WARN! data_to_send was not empty\n");
+            server.reset_data();
+        }
+        for (int column = 0; column < field_size; ) {
+            int rest = server.get_rest_data_size() - 4 * sizeof(int);
+            if (column + rest > field_size)
+                rest = field_size - column;
+            server.push_data_int(step);  // step
+            server.push_data_int(i);  // row 0..rows_amount
+            server.push_data_int(column);
+            server.push_data_int(rest);  // row length
+            server.push_data_str(row + column, rest);
+            server.send_pushed_data();
+            ++pieces_amount;
+            column += rest;
+        }
+    }
+    server.push_data_str(PHRASE_NODE_DONE_STEP, -1);
+    server.push_data_int(pieces_amount);
+    server.push_data_int(rows_amount);
+    server.send_pushed_data();
+}
+
+void client(char * server_name, int server_port)
 {
     struct sockaddr_in server_address;
-    int sock_fd;
-    socklen_t address_len = sizeof(server_address);
-    if ((sock_fd=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
-    {
-        die("socket");
-    }
-    memset((char *) &server_address, 0, sizeof(server_address);
+    memset((char *) &server_address, 0, sizeof(server_address));
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(server_port);
     if (inet_aton(server_name , &server_address.sin_addr) == 0)
@@ -125,63 +173,21 @@ void client(int server_port, char * server_name)
         die("inet_aton() failed\n");
     }
     Node server(server_address);
-
+    server.send_buffer(PHRASE_BE_NODE, -1);
     for (int step = 0; ; step++) {
-        get_data(server, step);
-        calculate_step(server, step);
-        send_data(server, step);
+        int rows_amount;
+        get_data(server, rows_amount, step);
+        calculate_step(step, rows_amount);
+        send_data(server, step, rows_amount);
     }
 }
 
 int main(int argc, char **argv)
 {
-
-
-
-    if (sendto(sock_fd, PHRASE_BE_NODE, strlen(PHRASE_BE_NODE), 0, (struct sockaddr *)&si_other, addr_len) == -1)
-    {
-        die("sendto()");
+    if (argc != 3) {
+        printf("Wrong params; using: ./life_game_client server_address server_port\n");
+    } else {
+        client(argv[1], std::stoi(argv[2]));
     }
-
-    while(1) {
-        ssize_t msg_len;
-        while (1) {
-            if ((msg_len = recvfrom(sock_fd, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &addr_len)) == -1) {
-                die("recvfrom()");
-            }
-            if (strlen(buf) < SECRET_PASSPHRASE_LENGTH) {
-                die("after recieve: too small msg");
-            }
-            if (strncmp(buf, PHRASE_NODE_DONE_STEP, strlen(PHRASE_NODE_DONE_STEP)) == 0) {
-                break;
-            }
-            int row, col;
-            char * next_data = deserialize_int(&row, buf);
-            next_data = deserialize_int(&col, next_data);
-            memcpy(&map[0][row][col], next_data, msg_len - 2 * sizeof(int));
-        }
-        for (int i = 0; i < field_size; ++i) {
-            for (int j = 0; j < field_size; ++j) {
-
-            }
-        }
-        if (sendto(sock_fd, message, strlen(message), 0, (struct sockaddr *)&si_other, addr_len) == -1)
-        {
-            die("sendto()");
-            return 0;
-        }
-    }
-    /*
-     * receive a reply and print it
-     * clear the buffer by filling null, it might have previously received data
-     */
-    memset(buf, 0, BUFLEN);
-    /* try to receive some data, this is a blocking call */
-    if (recvfrom(sock_fd, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &addr_len) == -1)
-    {
-        die("recvfrom()");
-    }
-    printf("server answer=\"%s\"\n", buf);
-    close(sock_fd);
     return 0;
 }

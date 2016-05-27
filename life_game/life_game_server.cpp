@@ -19,9 +19,8 @@
 #include <utility>
 #include <bitset>
 #include <malloc.h>
-#include "life_game_common.h"
+#include <poll.h>
 #include "node.h"
-#include "poll.h"
 
 #define SIZE 48
 #define NUM_OF_THREADS 8
@@ -42,61 +41,6 @@ pthread_barrier_t barrier_distribute_tasks,
 std::vector<Node> nodes;
 std::vector <std::pair <int, int> > tasks_for_nodes;
 
-int add(int x)
-{
-    if (x == SIZE - 1)
-        return 0;
-    else
-        return x + 1;
-}
-
-int sub(int x)
-{
-    if (x == 0)
-        return SIZE - 1;
-    else
-        return x - 1;
-}
-
-int alive(int step, int x, int y)
-{
-    int al = 0;
-    if (map[step][sub(x)][sub(y)] == 1)
-        ++al;
-    if (map[step][sub(x)][y] == 1)
-        ++al;
-    if (map[step][sub(x)][add(y)] == 1)
-        ++al;
-    if (map[step][x][sub(y)] == 1)
-        ++al;
-    if (map[step][x][add(y)] == 1)
-        ++al;
-    if (map[step][add(x)][sub(y)] == 1)
-        ++al;
-    if (map[step][add(x)][y] == 1)
-        ++al;
-    if (map[step][add(x)][add(y)] == 1)
-        ++al;
-    return al;
-}
-
-void recalc(int step, int x, int y)
-{
-    if (map[step][x][y] == 0)
-    {
-        if (alive(step, x, y) == 3)
-            map[1 ^ step][x][y] = 1;
-        else
-            map[1 ^ step][x][y] = 0;
-    }
-    if (map[step][x][y] == 1)
-    {
-        if (alive(step, x, y) == 3 || alive(step, x, y) == 2)
-            map[1 ^ step][x][y] = 1;
-        else
-            map[1 ^ step][x][y] = 0;
-    }
-}
 
 void print_map(int step)
 {
@@ -110,104 +54,6 @@ void print_map(int step)
     }
 }
 
-int check_if_game_over()
-{
-    return 0;
-}
-
-void try_print_map(int step)
-{
-    pthread_mutex_lock(&lock);
-    if (!was_printed) {
-        was_initialized = 0;
-        print_map(step);
-        was_printed = 1;
-    }
-    pthread_mutex_unlock(&lock);
-}
-
-void initizlize_variables()
-{
-    pthread_mutex_lock(&mutex_init);
-    if (!was_initialized) {
-        was_printed = 0;
-        was_initialized = 1;
-    }
-    pthread_mutex_unlock(&mutex_init);
-}
-
-
-//void* life_1(void* arg)
-//{
-//    int life_game_step;
-//    for (life_game_step = 0; ;life_game_step++) {
-//        pthread_barrier_wait(&barrier_distribute_tasks);
-//        pthread_barrier_wait(&barrier_life_game_begin_step);
-//        int i, j;
-//        int id = *(int*)arg;
-//        for (i = id; i < id + (SIZE / NUM_OF_THREADS); i++) {
-//            for (j = 0; j < SIZE; j++)
-//            {
-//                recalc(life_game_step & 1, i, j);
-//                //printf("%d\n",     end[(id * NUM_OF_THREADS) / SIZE]);
-//            }
-//        }
-//        pthread_barrier_wait(&barrier_life_game_step);
-//        try_print_map(life_game_step);
-//        if (0 & check_if_game_over()) {
-//            printf("GAME OVER DETECTED\n");
-//            return NULL;
-//        }
-//        pthread_barrier_wait(&barrier_life_game_end_step);
-//        usleep(10000);
-//    }
-//    return NULL;
-//}
-
-//void * server_thread(void * argv) {
-//    int port = ((int *)(argv))[0];
-//    int field_size = ((int *)(argv))[0];
-//    int steps_amount = ((int *)(argv))[0];
-//    struct sockaddr_in my_address;                  /* our address */
-//    struct sockaddr_in remote_address;              /* remote address */
-//    socklen_t address_len = sizeof(remote_address); /* length of addresses */
-//    ssize_t recvlen;                                /* # bytes received */
-//    int fd;                                         /* our socket */
-//    char buf[BUFFER_SIZE];                          /* receive buffer */
-//
-//    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-//        perror("cannot create socket\n");
-//        return 0;
-//    }
-//
-//    memset((char *)&my_address, 0, sizeof(my_address));
-//    my_address.sin_family = AF_INET;
-//    my_address.sin_addr.s_addr = htonl(INADDR_ANY);
-//    my_address.sin_port = htons(port);
-//
-//    /* bind the socket to any valid IP address and a specific port */
-//    if (bind(fd, (struct sockaddr *)&my_address, sizeof(my_address)) < 0) {
-//        perror("bind failed");
-//        return nullptr;
-//    }
-//    pthread_barrier_init(&barrier_distribute_tasks, NULL, 0);
-//    pthread_barrier_init(&barrier_life_game_begin_step, NULL, 0);
-//    pthread_barrier_init(&barrier_life_game_end_step, NULL, 0);
-//    for (int step = 0; step < steps_amount; ++step) {
-//        pthread_barrier_wait(&barrier_distribute_tasks);
-//        std::vector <Node> new_nodes;
-//        int rest = field_size % (int)nodes.size();
-//        int row_to_each_node = field_size / (int)nodes.size();
-//        tasks_for_nodes.resize(nodes.size());
-//        for (int i = 0, last = 0; i < (int)nodes.size(); ++i) {
-//            int rows = row_to_each_node + (rest < i);
-//            tasks_for_nodes[i] = std::make_pair(last, last + rows);
-//        }
-//        pthread_barrier_wait(&barrier_life_game_begin_step);
-//
-//        pthread_barrier_wait(&barrier_life_game_end_step);
-//        pthread_barrier_wait(&barrier_register_nodes);
-//}
 
 char * get_row_data(int step, int r, int field_size)
 {
@@ -233,7 +79,7 @@ void send_rows_to_node(int step, int r_first, int r_last, Node &node, int field_
                 rest = field_size - column;
             node.push_data_int(step);  // step
             node.push_data_int(i - r_first);  // row 0..n
-            node.push_data_int(column);
+            node.push_data_int(column);       // column 0..field_size
             node.push_data_int(rest);  // row length
             node.push_data_str(row + column, rest);
             node.send_pushed_data();
@@ -242,8 +88,9 @@ void send_rows_to_node(int step, int r_first, int r_last, Node &node, int field_
         }
     }
     node.push_data_str(PHRASE_NODE_DONE_STEP, -1);
-    node.push_data_int(pieces_amount);
-    node.push_data_int(field_size);
+    node.push_data_int(pieces_amount);    // pieces of data transmitted
+    node.push_data_int(field_size);       // width of field
+    node.push_data_int(r_last - r_first); // rows amount
     node.send_pushed_data();
 }
 
@@ -262,9 +109,15 @@ void read_data_from_node(int &pieces_amount, int &received, int step, int node_n
     Node &node = nodes[node_num];
     char * data = nullptr;
     int size = node.get_data(data, 0);
-    if (size >= strlen(PHRASE_NODE_DONE_STEP) + sizeof(int) &&
-            strncmp(data, PHRASE_NODE_DONE_STEP, strlen(PHRASE_NODE_DONE_STEP)) == 0) {
-        pieces_amount = *(int *)(data + strlen(PHRASE_NODE_DONE_STEP));
+    int phrase_len = strlen(PHRASE_NODE_DONE_STEP);
+    if (size >= phrase_len + (int)sizeof(int) &&
+        strncmp(data, PHRASE_NODE_DONE_STEP, phrase_len) == 0) {
+        char * tmp = deserialize_int(&pieces_amount, data + phrase_len);
+        int rows_amount;
+        deserialize_int(&rows_amount, tmp);
+        if (rows_amount != tasks_for_nodes[node_num].second - tasks_for_nodes[node_num].first) {
+            fprintf(stderr, "WARN! received rows amount not same as server");
+        }
         return;
     }
     int dst_step, row, column, row_length;
@@ -272,7 +125,10 @@ void read_data_from_node(int &pieces_amount, int &received, int step, int node_n
     buf = deserialize_int(&row, buf);
     buf = deserialize_int(&column, buf);
     buf = deserialize_int(&row_length, buf);
-    if (4 * sizeof(int) + row_length > size) {
+    if (dst_step != step) {
+        fprintf(stderr, "WARN! dst_step not the same as server step; skipped");
+    }
+    else if (4 * (int)(sizeof(int)) + row_length > size) {
         fprintf(stderr, "received msg: truncated length\n");
     } else {
         memcpy(&map[(step & 1) ^ 1][row + tasks_for_nodes[node_num].first][column], buf, row_length);
@@ -285,8 +141,9 @@ int server(int * argv) {
     int port = argv[0];
     int field_size = argv[1];
     int steps_amount = argv[2];
-    struct sockaddr_in my_address;                  /* our address */
-    int fd;                                         /* our socket */
+    char buffer[BUFFER_SIZE];
+    struct sockaddr_in my_address;      /* our address */
+    int fd;                             /* our socket */
 
     if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("cannot create socket\n");
@@ -303,12 +160,20 @@ int server(int * argv) {
         perror("bind failed");
         return -1;
     }
-    pollfd fd_wait;
-    fd_wait.events = POLLIN;
-    fd_wait.fd = fd;
-    poll(&fd_wait, 1, -1);  /* waiting for first connect */
+    pollfd pollfd_server;
+    pollfd_server.events = POLLIN;
+    pollfd_server.fd = fd;
+    printf("Waiting clients\n");
+    poll(&pollfd_server, 1, -1);  /* waiting for first connect */
     for (int step = 0; step < steps_amount; ++step) {
-        std::vector<Node> new_nodes;
+        poll(&pollfd_server, 1, 0);
+        while (pollfd_server.revents & POLLIN) {
+            struct sockaddr_in remote;
+            socklen_t remote_address_len;
+            recvfrom(fd, buffer, BUFFER_SIZE, 0, (sockaddr *)&remote, &remote_address_len);
+            nodes.push_back(Node(remote));
+            poll(&pollfd_server, 1, 0);
+        }
         int rest = field_size % (int) nodes.size();
         int row_to_each_node = field_size / (int) nodes.size();
         tasks_for_nodes.resize(nodes.size());
@@ -345,10 +210,6 @@ int server(int * argv) {
                 }
             }
         }
-        nodes.reserve(nodes.size() + new_nodes.size());
-        for (Node &node : new_nodes) {
-            nodes.push_back(node);
-        }
     }
     return 0;
 }
@@ -360,7 +221,7 @@ int main(int argc, char ** argv) {
     int port = DEFAULT_PORT,
         field_size = DEFAULT_FIELD_SIZE,
         steps_amount = DEFAULT_STEPS_AMOUNT;
-    if (argc > 4) {
+    if (argc != 4) {
         printf("wrong params: using:\n");
         printf("./life_game_server port field_size steps_amount\n");
         return 0;
@@ -371,7 +232,6 @@ int main(int argc, char ** argv) {
         steps_amount = std::stoi(argv[3]);
     }
     int argv_parsed[] = {port, field_size, steps_amount};
-    pthread_t server_thread;
 
     printf("using params: port=%d, filed_size=%dx%d generations_amount=%d\n",
            port, field_size, field_size, steps_amount);

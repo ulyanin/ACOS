@@ -2,15 +2,15 @@
 // Created by ulyanin on 21.05.16.
 //
 
-#ifndef LIFE_GAME_LIFE_GAME_CONSTANTS_H
-#define LIFE_GAME_LIFE_GAME_CONSTANTS_H
+#ifndef LIFE_GAME_COMMON_H
+#define LIFE_GAME_COMMON_H
 
 #define LIFE_GAME_LOG
 
 const int SECRET_PASSPHRASE_LENGTH  = 10;
 const int DEFAULT_PORT = 1337;
 const char PHRASE_BE_NODE[SECRET_PASSPHRASE_LENGTH + 1] = "WANTBENODE";
-const char PHRASE_NODE_DONE_STEP[SECRET_PASSPHRASE_LENGTH] = "NCOMPLETED";
+const char PHRASE_NODE_DONE_STEP[SECRET_PASSPHRASE_LENGTH + 1] = "NCOMPLETED";
 const int MAX_FIELD_SIZE = 5000;
 const int MAX_DATA_SIZE = 1024;
 const int DEFAULT_FIELD_SIZE = 666;
@@ -27,11 +27,6 @@ const int TIMEOUT_WAIT_NODES_MILLISECONDS = 3000;
 //}
 //
 
-char * deserialize_int(int * number, char * data)
-{
-    memcpy(number, data, sizeof(int));
-    return data + sizeof(int);
-}
 
 //char * serialize(int row, int column, int len, int step, char * data)
 //{
