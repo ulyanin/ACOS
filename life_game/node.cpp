@@ -139,12 +139,15 @@ int Node::receive_and_accept_server_ans()
     memset(buf_, 0, sizeof(buf_));
     ssize_t receive_len = recvfrom(socket_fd_, buf_, MAX_DATA_SIZE, 0,
                                    (sockaddr *)&new_sock_address, &new_sock_address_len);
-    if (receive_len < strlen(PHRASE_SERVER_ACCEPT_NODE)) {
-        fprintf(stderr, "strange data received; spam?\n");
+    if (receive_len < (int)strlen(PHRASE_SERVER_ACCEPT_NODE)) {
+        fprintf(stderr, "strange data received: %s; spam?\n", buf_);
+        return -1;
     } else if (strncmp(buf_, PHRASE_SERVER_ACCEPT_NODE, strlen(PHRASE_SERVER_ACCEPT_NODE)) == 0) {
-        printf("Accept server answer");
+        printf("Accept server answer\n");
         memcpy(&node_address_, &new_sock_address, new_sock_address_len);
-        set_up_connection();
+        return set_up_connection();
+    } else {
+        return -1;
     }
 }
 

@@ -174,7 +174,8 @@ void client(char * server_name, int server_port)
     }
     Node server(server_address);
     server.register_as_client_node();
-    server.receive_and_accept_server_ans();
+    if (server.receive_and_accept_server_ans() < 0)
+        return;
     for (int step = 0; ; step++) {
         int rows_amount;
         get_data(server, rows_amount, step);
