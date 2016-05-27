@@ -134,7 +134,7 @@ char * get_row_data(int step, int r, int field_size)
         r += field_size;
     if (r >= field_size)
         r -= field_size;
-    return map[step & 1][r];
+    return map[(step & 1) ^ 1][r];
 }
 
 void send_data(Node &server, int step, int rows_amount)

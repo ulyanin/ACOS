@@ -74,15 +74,16 @@ int send_rows_to_node(int step, int r_first, int r_last, Node &node, int field_s
     return pieces_amount;
 }
 
-void send_post_data(int step, int pieces_amount, int rows_amount, Node &node, int field_size)
+void send_post_data(int step, int pieces_amount, int rows_amount, int node_num, int field_size)
 {
+    Node &node = nodes[node_num];
     node.push_data_str(PHRASE_SERVER_DONE_STEP, -1);
     node.push_data_int(step);    // our step
     node.push_data_int(pieces_amount);    // pieces of data transmitted
     node.push_data_int(field_size);       // width of field
     node.push_data_int(rows_amount); // rows amount
     node.send_pushed_data();
-    printf("summary pieces amount=%d\n", pieces_amount);
+    printf("summary pieces (to node #%d) amount=%d\n", node_num, pieces_amount);
 
 }
 
@@ -157,10 +158,20 @@ void listen_nodes(int fd, pollfd &pollfd_server)
     }
 }
 
+void generate_data(int field)
+{
+    for (int i = 0; i < field; ++i) {
+        for (int j = 0; j < field; ++j) {
+            map[0][i][j] = map[1][i][j] = rand() % 2;
+        }
+    }
+}
+
 int server(int * argv) {
     int port = argv[0];
     int field_size = argv[1];
     int steps_amount = argv[2];
+    generate_data(field_size);
 //    char buffer[BUFFER_SIZE];
     struct sockaddr_in my_address;      /* our address */
     int fd;                             /* our socket */
@@ -186,8 +197,10 @@ int server(int * argv) {
     pollfd_server.fd = fd;
     printf("Waiting clients\n");
     poll(&pollfd_server, 1, -1);  /* waiting for first connect */
-    sleep(5);
+    sleep(1);
     for (int step = 0; step < steps_amount; ++step) {
+        //sleep(1);
+        print_map(step, std::min(30, field_size), 0, 0);
         listen_nodes(fd, pollfd_server);
 //        sleep(2);
         int rest = field_size % (int) nodes.size();
@@ -205,7 +218,7 @@ int server(int * argv) {
         }
         for (int i = 0; i < (int)nodes.size(); ++i) {
             send_post_data(step, sent_pieces_amount[i], tasks_for_nodes[i].second - tasks_for_nodes[i].first + 2,
-                           nodes[i], field_size);
+                           i, field_size);
         }
         std::vector<bool> mask_completed_nodes(nodes.size());
         std::vector<pollfd> socket_descriptors(nodes.size());
@@ -226,8 +239,17 @@ int server(int * argv) {
                 continue;
             }
             if (status == 0) {
-                fprintf(stderr, "TIMEOUT NODES CONNECTION");
+                fprintf(stderr, "TIMEOUT NODES CONNECTION\n");
                 --step;
+                std::vector<Node> tmp;
+                for (int i = 0; i < (int)nodes.size(); ++i) {
+                    printf("node %d: is_completed=%d, pieces: %d/%d\n",
+                           i, (int)mask_completed_nodes[i], received_pieces_amount[i], expected_pieces_amount[i]);
+                    if (mask_completed_nodes[i] != 0) {
+                        tmp.push_back(nodes[i]);
+                    }
+                }
+                nodes.swap(tmp);
                 break;
             }
             std::random_shuffle(order.begin(), order.end());
